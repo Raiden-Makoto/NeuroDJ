@@ -5,8 +5,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils import extract_features, classify_mood
+from utils import extract_features
 from data.brain import get_multichannel_eeg
+from scripts.classifier import classify_mood
 from utils.recommender import find_closest_song, get_user_reaction
 from bayes_opt import BayesianOptimization, UtilityFunction #type: ignore
 
