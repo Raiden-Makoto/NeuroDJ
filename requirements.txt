@@ -4,3 +4,4 @@ scipy
 matplotlib
 bayesian-optimization
 spotipy==2.25.2
+streamlit==1.52
