@@ -5,66 +5,125 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils import extract_features
+from utils.recommender import find_closest_song
 from data.brain import get_multichannel_eeg
-from scripts.classifier import classify_mood
-from utils.recommender import find_closest_song, get_user_reaction
-from bayes_opt import BayesianOptimization, UtilityFunction #type: ignore
+from data.fake_playlist import DUMMY_PLAYLIST
+import numpy as np #type: ignore
+from bayes_opt import BayesianOptimization #type: ignore
+from bayes_opt.acquisition import UpperConfidenceBound #type: ignore
 
 def run_neuro_dj_session():
     print("🎧 STARTING NEURO-DJ WITH DUMMY DATABASE...")
     
-    # A. DETECT MOOD (Simulated)
-    # Let's force "ANGER" to see if it finds Metallica
-    true_mood = "anger"
-    print(f"\n--- 1. READING BRAINWAVES (True State: {true_mood.upper()}) ---")
+    # A. GET USER MOOD AND GENERATE BRAIN WAVES
+    valid_moods = ["sad", "happy", "anger", "neutral"]
+    print(f"\n--- 1. WHAT'S YOUR CURRENT MOOD? ---")
+    print("Available moods: sad, happy, anger, neutral")
     
-    raw_eeg, fs = get_multichannel_eeg(mood=true_mood)
-    features = extract_features(raw_eeg, fs)
-    detected_mood = classify_mood(features)
+    while True:
+        user_mood = input("Enter your mood: ").strip().lower()
+        if user_mood in valid_moods:
+            detected_mood = user_mood
+            break
+        else:
+            print(f"Invalid mood. Please choose from: {', '.join(valid_moods)}")
     
-    print(f"✅ DETECTED: {detected_mood.upper()}")
+    print(f"✅ SELECTED MOOD: {detected_mood.upper()}")
+    
+    # Generate brain waves based on the user's mood
+    print(f"\n--- 2. GENERATING BRAIN WAVES FOR {detected_mood.upper()} MOOD ---")
+    raw_eeg, fs = get_multichannel_eeg(mood=detected_mood)
+    print(f"✅ Brain wave simulation complete ({raw_eeg.shape[1] / fs:.1f} seconds of data)")
     
     # B. OPTIMIZATION LOOP
-    print(f"\n--- 2. DJ SPINNING TRACKS FOR: {detected_mood.upper()} ---")
+    print(f"\n--- 3. DJ SPINNING TRACKS FOR: {detected_mood.upper()} ---")
+    
+    acquisition = UpperConfidenceBound(kappa=2.5)
     
     optimizer = BayesianOptimization(
         f=None, # We manually probe, so f is None
         pbounds={'valence': (0, 1), 'energy': (0, 1)},
+        acquisition_function=acquisition,
         verbose=0,
-        random_state=42
+        random_state=42,
+        allow_duplicate_points=True
     )
     
-    utility = UtilityFunction(kind="ucb", kappa=2.5)
+    print(f"\n{'SONG TITLE':<25} | {'ARTIST':<15} | {'V / E':<10}")
+    print("-" * 55)
     
-    print(f"{'SONG TITLE':<20} | {'ARTIST':<12} | {'V / E':<10} | {'REACTION'}")
-    print("-" * 65)
+    # Taboo list: tracks songs we've already played to prevent infinite loops
+    taboo_list = set()  # Store (title, artist) tuples
     
-    for i in range(10):
+    def find_closest_song_excluding_taboo(suggested_v, suggested_e, taboo):
+        """Find closest song that's not in the taboo list"""
+        best_song = None
+        min_dist = float('inf')
+        
+        for song in DUMMY_PLAYLIST:
+            song_key = (song['title'], song['artist'])
+            if song_key in taboo:
+                continue  # Skip taboo songs
+            
+            # Euclidean distance
+            dist = np.sqrt((song['valence'] - suggested_v)**2 + 
+                          (song['energy'] - suggested_e)**2)
+            if dist < min_dist:
+                min_dist = dist
+                best_song = song
+                
+        return best_song
+    
+    i = 0
+    while i < 10:
         # 1. AI Suggests ideal coordinates
-        next_point = optimizer.suggest(utility)
+        next_point = optimizer.suggest()
         
-        # 2. Database Retrieval (Find closest song)
-        song = find_closest_song(next_point['valence'], next_point['energy'])
+        # 2. Database Retrieval (Find closest song excluding taboo list)
+        song = find_closest_song_excluding_taboo(
+            next_point['valence'], 
+            next_point['energy'],
+            taboo_list
+        )
         
-        # 3. User Reaction (To the actual song)
-        feedback = get_user_reaction(song, detected_mood)
+        # 3. Check if we've run out of songs
+        if song is None:
+            print("\nLooping the playlist")
+            break
         
-        # 4. Display
-        reaction_emoji = "❤️  LIKED" if feedback == 1 else "❌  SKIPPED"
+        # 4. Display song and get user reaction
         ve_str = f"{song['valence']:.2f}/{song['energy']:.2f}"
-        print(f"{song['title']:<20} | {song['artist']:<12} | {ve_str:<10} | {reaction_emoji}")
+        print(f"\n[{i+1}/10] Now playing: {song['title']} by {song['artist']} (V/E: {ve_str})")
         
-        # 5. TEACH THE AI
+        # 5. Get interactive user feedback
+        while True:
+            user_input = input("Do you like this song? (y/n): ").strip().lower()
+            if user_input == 'y':
+                feedback = 1
+                reaction_emoji = "❤️  LIKED"
+                break
+            elif user_input == 'n':
+                feedback = 0
+                reaction_emoji = "❌  SKIPPED"
+                break
+            else:
+                print("Please enter 'y' for yes or 'n' for no.")
+        
+        print(f"  → {reaction_emoji}")
+        
+        # 6. Add song to taboo list (prevent repeats)
+        song_key = (song['title'], song['artist'])
+        taboo_list.add(song_key)
+        
+        # 7. TEACH THE AI
         # Critical: We teach it the parameters of the SONG we played, 
         # not the parameters it suggested. This reduces noise.
-        try:
-            optimizer.register(
-                params={'valence': song['valence'], 'energy': song['energy']},
-                target=feedback
-            )
-        except KeyError:
-            pass # Creating duplicate points happens in small datasets
+        optimizer.register(
+            params={'valence': song['valence'], 'energy': song['energy']},
+            target=feedback
+        )
+        
+        i += 1
 
     # C. SUMMARY
     print("-" * 65)
