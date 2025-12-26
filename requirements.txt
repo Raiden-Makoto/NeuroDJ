@@ -1,4 +1,6 @@
 numpy
+pandas
 scipy
 matplotlib
 bayesian-optimization
+spotipy==2.25.2
