@@ -7,7 +7,6 @@ sys.path.insert(0, str(project_root))
 
 from utils import generate_pink_noise, add_wave
 import numpy as np #type: ignore
-import matplotlib.pyplot as plt #type: ignore
 
 def get_multichannel_eeg(mood="neutral", duration_sec=10):
     fs = 256
@@ -64,18 +63,3 @@ def get_multichannel_eeg(mood="neutral", duration_sec=10):
         eeg_matrix[3] += artifact * 0.1 # Back Right (faint echo)
 
     return eeg_matrix, fs
-
-# --- VISUALIZATION ---
-data, fs = get_multichannel_eeg(mood="sad") # Try "sad" or "happy"
-time = np.arange(data.shape[1]) / fs
-
-fig, axes = plt.subplots(4, 1, sharex=True, figsize=(10, 8))
-ch_names = ['AF7 (Front-L)', 'AF8 (Front-R)', 'TP9 (Back-L)', 'TP10 (Back-R)']
-
-for i in range(4):
-    axes[i].plot(time, data[i], color='k', linewidth=0.8)
-    axes[i].set_ylabel(ch_names[i])
-
-plt.xlabel("Time (s)")
-plt.suptitle("4-Channel EEG Simulation (Sad)")
-plt.show()
