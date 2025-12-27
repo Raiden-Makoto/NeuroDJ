@@ -1,6 +1,4 @@
-# NeuroDJ
-
-A spontaneous song recommender system that uses simulated brainwave data and Bayesian optimization to learn your music preferences based on your current emotional state.
+![NeuroDJ Logo](neurodj.png)
 
 ## Overview
 
