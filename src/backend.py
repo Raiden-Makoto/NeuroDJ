@@ -55,16 +55,32 @@ class SongFinder:
         # 4. Update Taboo List
         self.taboo_list.add(best_row['track_name'])
         
-        # 5. Return pure data
-        return {
-            "name": best_row['track_name'],
-            "artist": best_row.get('artist', 'Taylor Swift'),  # Use artist from CSV, fallback to Taylor Swift
-            "album": best_row.get('album_name', 'Unknown Album'),
-            "features": {
-                "valence": float(best_row['valence']),
-                "energy": float(best_row['energy']),
-                "acousticness": float(best_row.get('acousticness', 0)),
-                "liveness": float(best_row.get('liveness', 0.1)),
-                "loudness": float(best_row.get('loudness', -10.0))
+        # 5. Return pure data with safe type conversions
+        try:
+            return {
+                "name": str(best_row.get('track_name', 'Unknown Track')),
+                "artist": str(best_row.get('artist', 'Taylor Swift')),  # Use artist from CSV, fallback to Taylor Swift
+                "album": str(best_row.get('album_name', 'Unknown Album')),
+                "features": {
+                    "valence": float(best_row.get('valence', 0.5)),
+                    "energy": float(best_row.get('energy', 0.5)),
+                    "acousticness": float(best_row.get('acousticness', 0.5)),
+                    "liveness": float(best_row.get('liveness', 0.1)),
+                    "loudness": float(best_row.get('loudness', -10.0))
+                }
             }
-        }
+        except (ValueError, KeyError) as e:
+            print(f"Error processing song data: {e}")
+            # Return a safe default
+            return {
+                "name": "Unknown Track",
+                "artist": "Unknown Artist",
+                "album": "Unknown Album",
+                "features": {
+                    "valence": 0.5,
+                    "energy": 0.5,
+                    "acousticness": 0.5,
+                    "liveness": 0.1,
+                    "loudness": -10.0
+                }
+            }

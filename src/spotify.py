@@ -104,3 +104,25 @@ class SpotifyHandler:
             else:
                 print(f"⚠️ Playback Error: {e}")
             return False
+    
+    def pause_playback(self):
+        """Pause the current playback"""
+        try:
+            self.sp.pause_playback()
+        except Exception as e:
+            print(f"⚠️ Error pausing playback: {e}")
+    
+    def start_playback(self):
+        """Start or resume playback"""
+        try:
+            self.sp.start_playback()
+        except Exception as e:
+            print(f"⚠️ Error starting playback: {e}")
+    
+    def current_playback_state(self):
+        """Get current playback state"""
+        try:
+            return self.sp.current_playback()
+        except Exception as e:
+            print(f"⚠️ Error fetching playback state: {e}")
+            return None
