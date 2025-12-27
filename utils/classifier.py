@@ -7,7 +7,6 @@ sys.path.insert(0, str(project_root))
 
 import numpy as np #type: ignore
 from utils.bci_pipe import extract_features
-from data.brain import get_multichannel_eeg
 
 def classify_mood(features):
     """
@@ -48,6 +47,7 @@ def classify_mood(features):
 
 # --- TEST THE PIPELINE ---
 if __name__ == "__main__":
+    from data.brain import get_multichannel_eeg
     # Generate fresh "Sad" data
     print("--- Simulating SAD Brain ---")
     raw_eeg, fs = get_multichannel_eeg(mood="sad")

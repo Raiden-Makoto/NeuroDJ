@@ -38,6 +38,37 @@ class NeuroManager:
         
         self.current_song_data: Optional[Dict[str, Any]] = None  # Stores features of currently playing song
 
+    def start_with_mood(self, mood: str) -> str:
+        """
+        Bypasses the optimizer to pick the first song based on 
+        the initial Brain State.
+        """
+        print(f"🧠 Seeding Engine with Initial Mood: {mood.upper()}")
+        
+        # Hardcoded 'Centroids' for each mood
+        # This gives the AI a good starting place
+        mood_map = {
+            "sad":   {'valence': 0.2, 'energy': 0.2, 'acousticness': 0.9, 'liveness': 0.1, 'loudness': -12.0},
+            "happy": {'valence': 0.9, 'energy': 0.8, 'acousticness': 0.1, 'liveness': 0.3, 'loudness': -6.0},
+            "anger": {'valence': 0.1, 'energy': 0.9, 'acousticness': 0.05, 'liveness': 0.4, 'loudness': -4.0},
+            "focus": {'valence': 0.5, 'energy': 0.3, 'acousticness': 0.5, 'liveness': 0.15, 'loudness': -10.0}
+        }
+        
+        # Default to 'focus' if mood is unknown
+        target_features = mood_map.get(mood, mood_map['happy'])
+        
+        # Get song from Backend directly
+        song_data = self.backend.get_next_song(target_features)
+        
+        if not song_data:
+            return "Error: No song found"
+            
+        self.current_song_data = song_data
+        
+        # Play it
+        success = self.handler.play_specific_song(song_data['name'], song_data['artist'])
+        return song_data['name'] if success else "Error"
+
     def next_song(self) -> str:
         """
         The Main Loop Step:
