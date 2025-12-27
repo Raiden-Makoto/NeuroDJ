@@ -110,36 +110,98 @@ if 'next_song_queued' not in st.session_state:
 if 'queued_song_data' not in st.session_state:
     st.session_state.queued_song_data = None  # Store next song info for display
 
+if 'auto_like_pending_rerun' not in st.session_state:
+    st.session_state.auto_like_pending_rerun = False  # Flag to trigger rerun after auto-like
+
+if 'song_start_time' not in st.session_state:
+    st.session_state.song_start_time = None  # Track when current song started playing
+
+if 'last_periodic_rerun_time' not in st.session_state:
+    st.session_state.last_periodic_rerun_time = 0  # Track last periodic rerun for auto-like checking
+
+if 'should_play_queued_song' not in st.session_state:
+    st.session_state.should_play_queued_song = False  # Flag to ensure queued song plays when current ends
+
+if 'skip_pending_rerun' not in st.session_state:
+    st.session_state.skip_pending_rerun = False  # Flag to trigger rerun after skip
+
+if 'next_in_queue_pending_rerun' not in st.session_state:
+    st.session_state.next_in_queue_pending_rerun = False  # Flag to trigger rerun after playing queued song
+
+if 'quit_session_pending_rerun' not in st.session_state:
+    st.session_state.quit_session_pending_rerun = False  # Flag to trigger rerun after quitting session
+
+if 'track_changed_pending_rerun' not in st.session_state:
+    st.session_state.track_changed_pending_rerun = False  # Flag to trigger rerun when track changes
+
+
+if 'song_played_pending_rerun' not in st.session_state:
+    st.session_state.song_played_pending_rerun = False  # Flag to trigger rerun after playing a new song
+
+if 'periodic_rerun_pending' not in st.session_state:
+    st.session_state.periodic_rerun_pending = False  # Flag to trigger periodic rerun at end of script
+
+if 'last_sim_mood_selection' not in st.session_state:
+    st.session_state.last_sim_mood_selection = None  # Track last sidebar mood selection
+
 # --- HELPER: SYNC WITH SPOTIFY ---
 def get_current_spotify_state():
     """
     Polls the real Spotify app to get accurate Album Art and Progress.
+    Returns None if no playback or error occurs.
     """
     sp = st.session_state.dj.handler.sp
     try:
         current = sp.current_playback()
         if current and current.get('item'):
             track = current['item']
-            track_id = track['id']  # Unique identifier for the track
+            track_id = track.get('id')  # Unique identifier for the track
+            if not track_id:
+                return None
             
-            # Check if song changed - only refresh when song actually changes
+            progress_ms = current.get('progress_ms', 0)
+            current_time = time.time()
+            
+            # Check if song changed - set flags for main script to handle
             if st.session_state.last_track_id != track_id:
+                # If we have a queued song and track changed, set flag to play it
+                if st.session_state.next_song_queued and st.session_state.queued_song_data:
+                    st.session_state.should_play_queued_song = True
+                
                 st.session_state.last_track_id = track_id
-                # Trigger refresh only when song changes
-                st.rerun()
+                # Reset song start time when new song starts
+                st.session_state.song_start_time = current_time
+                # Set flag to trigger rerun (handled in main script)
+                st.session_state.track_changed_pending_rerun = True
+            
+            # Track song start time for reference (auto-like now uses progress_ms directly)
+            if st.session_state.song_start_time is None or st.session_state.last_track_id != track_id:
+                st.session_state.song_start_time = current_time
+            
+            # Safely extract track information with fallbacks
+            artists = track.get('artists', [])
+            artist_name = artists[0]['name'] if artists else 'Unknown Artist'
+            
+            album = track.get('album', {})
+            album_name = album.get('name', 'Unknown Album')
+            
+            images = album.get('images', [])
+            cover_url = images[0]['url'] if images else 'https://via.placeholder.com/300'
             
             return {
-                "title": track['name'],
-                "artist": track['artists'][0]['name'],
-                "album": track['album']['name'],
-                "cover": track['album']['images'][0]['url'], # Get high-res image
-                "progress_ms": current['progress_ms'],
-                "duration_ms": track['duration_ms'],
-                "is_playing": current['is_playing'],
+                "title": track.get('name', 'Unknown Track'),
+                "artist": artist_name,
+                "album": album_name,
+                "cover": cover_url,
+                "progress_ms": progress_ms,
+                "duration_ms": track.get('duration_ms', 0),
+                "is_playing": current.get('is_playing', False),
                 "track_id": track_id
             }
-    except Exception:
-        pass
+    except Exception as e:
+        # Log error but don't crash
+        print(f"Error fetching Spotify state: {e}")
+        return None
     
     # Fallback if nothing is playing
     return None
@@ -175,9 +237,8 @@ def handle_skip():
             st.session_state.next_song_queued = False
             st.session_state.queued_song_data = None
         
-        # Update UI after skip completes
-        time.sleep(2.0)
-        st.rerun()
+        # Set flag to trigger rerun after skip completes
+        st.session_state.skip_pending_rerun = True
 
 def handle_next_in_queue():
     """Play the next song in queue and clear the queue"""
@@ -201,24 +262,35 @@ def handle_next_in_queue():
         st.session_state.next_song_queued = False
         st.session_state.queued_song_data = None
         
-        time.sleep(0.5)
-        st.rerun()
+        # Set flag to trigger rerun
+        st.session_state.next_in_queue_pending_rerun = True
     else:
         st.warning("No song in queue")
 
 def handle_play_pause():
     """Toggle Playback directly on Spotify"""
-    sp = st.session_state.dj.handler.sp
+    handler = st.session_state.dj.handler
     try:
-        current = sp.current_playback()
-        if current and current['is_playing']:
-            sp.pause_playback()
+        # Get current state to check if playing
+        current = handler.sp.current_playback()
+        is_playing = current and current.get('is_playing', False) if current else False
+        
+        if is_playing:
+            # Currently playing - pause it
+            handler.sp.pause_playback()
+            st.toast("Paused")
         else:
-            sp.start_playback()
+            # Not playing - start/resume playback
+            handler.sp.start_playback()
+            st.toast("Playing")
         # Set flag to trigger refresh
         st.session_state.playback_toggled = True
     except Exception as e:
-        st.warning(f"Control Error: {e}")
+        error_msg = str(e)
+        if "NO_ACTIVE_DEVICE" in error_msg or "404" in error_msg:
+            st.warning("No active device. Please open Spotify and start playing a song first.")
+        else:
+            st.warning(f"Control Error: {e}")
 
 def handle_quit_session():
     """End the session, reset state, and clear cache (but keep music playing)"""
@@ -237,7 +309,8 @@ def handle_quit_session():
     st.cache_data.clear()
     
     st.toast("Session ended - Music continues playing")
-    st.rerun()
+    # Set flag to trigger rerun
+    st.session_state.quit_session_pending_rerun = True
 
 # --- UI LAYOUT ---
 
@@ -292,32 +365,83 @@ if st.session_state.get('playback_toggled', False):
     st.session_state.playback_toggled = False
     st.rerun()
 
-# Monitor brain state changes if session is active
-if st.session_state.session_started:
-    # Continuously scan brain state from hardware simulator
-    sim_state = st.session_state.get('sim_mood_selection', 'focus')
-    raw_eeg, fs = get_multichannel_eeg(mood=sim_state, duration_sec=5)
-    features = extract_features(raw_eeg, fs)
-    detected_mood = classify_mood(features)
-    
-    # Check if brain state changed
-    if st.session_state.current_brain_state != detected_mood:
-        if st.session_state.current_brain_state is not None:
-            # Brain state changed - queue it to load after current song finishes
-            st.session_state.pending_mood_change = detected_mood
-            st.toast(f"Brain State Changed: {detected_mood.upper()} (Will load after current song)")
-        st.session_state.current_brain_state = detected_mood
+# Check if auto-like needs to trigger rerun (after delay)
+if st.session_state.get('auto_like_pending_rerun', False):
+    st.session_state.auto_like_pending_rerun = False
+    time.sleep(2.0)
+    st.rerun()
 
-# Fetch real-time state from Spotify
+# Check if skip needs to trigger rerun
+if st.session_state.get('skip_pending_rerun', False):
+    st.session_state.skip_pending_rerun = False
+    time.sleep(2.0)
+    st.rerun()
+
+# Check if next in queue needs to trigger rerun
+if st.session_state.get('next_in_queue_pending_rerun', False):
+    st.session_state.next_in_queue_pending_rerun = False
+    time.sleep(0.5)
+    st.rerun()
+
+# Check if quit session needs to trigger rerun
+if st.session_state.get('quit_session_pending_rerun', False):
+    st.session_state.quit_session_pending_rerun = False
+    st.rerun()
+
+# Check if track changed and needs rerun
+if st.session_state.get('track_changed_pending_rerun', False):
+    st.session_state.track_changed_pending_rerun = False
+    st.rerun()
+
+# Check if song was played and needs rerun (after delay)
+if st.session_state.get('song_played_pending_rerun', False):
+    st.session_state.song_played_pending_rerun = False
+    time.sleep(2.0)
+    # Verify song is playing before rerun
+    verify_state = get_current_spotify_state()
+    if verify_state and verify_state.get('is_playing'):
+        st.rerun()
+
+# Monitor brain state changes if session is active
+# Only check if sidebar mood selection changed - don't rescan brain state on every rerun
+if st.session_state.session_started:
+    sim_state = st.session_state.get('sim_mood_selection', 'focus')
+    
+    # Only scan and update brain state if sidebar selection changed
+    # This prevents constant rescanning and resetting
+    last_sim_state = st.session_state.get('last_sim_mood_selection', None)
+    
+    if sim_state != last_sim_state:
+        # Sidebar mood selection changed - scan brain state
+        st.session_state.last_sim_mood_selection = sim_state
+        raw_eeg, fs = get_multichannel_eeg(mood=sim_state, duration_sec=5)
+        features = extract_features(raw_eeg, fs)
+        detected_mood = classify_mood(features)
+        
+        # Only update if brain state actually changed (preserves state between reruns)
+        if st.session_state.current_brain_state != detected_mood:
+            if st.session_state.current_brain_state is not None:
+                # Brain state changed - queue it to load after current song finishes
+                st.session_state.pending_mood_change = detected_mood
+                st.toast(f"Brain State Changed: {detected_mood.upper()} (Will load after current song)")
+            # Update brain state only when it changes
+            st.session_state.current_brain_state = detected_mood
+    # If sidebar selection didn't change, brain state is preserved (not reset)
+
+# Fetch real-time state from Spotify FIRST (before any rerun checks)
 state = get_current_spotify_state()
 
-# Auto-Like: If user listens to more than 30 seconds, count it as a Like
-if state and state.get('track_id') and state.get('is_playing'):
+# Auto-Like: Check if user has listened for 30+ seconds
+# Check directly using progress_ms
+if state and state.get('track_id'):
     track_id = state['track_id']
     progress_seconds = state['progress_ms'] / 1000.0
     
     # Check if they've listened for more than 30 seconds and haven't auto-liked yet
-    if progress_seconds >= 30.0 and track_id not in st.session_state.auto_liked_tracks:
+    # Only check if song is playing (don't auto-like paused songs)
+    if (progress_seconds >= 30.0 and 
+        track_id not in st.session_state.auto_liked_tracks and
+        state.get('is_playing', False)):
         # Auto-like this track
         st.session_state.auto_liked_tracks.add(track_id)
         
@@ -342,6 +466,54 @@ if state and state.get('track_id') and state.get('is_playing'):
         queued_song = st.session_state.dj.backend.get_next_song(target)
         st.session_state.queued_song_data = queued_song
         st.session_state.next_song_queued = True
+        # Set flag to trigger rerun after delay
+        st.session_state.auto_like_pending_rerun = True
+
+# Check song end BEFORE rendering UI - this ensures queued songs play immediately
+# If current progress + 10 seconds exceeds song duration, song is finished
+if state and state.get('duration_ms', 0) > 0:
+    progress_plus_10s = state['progress_ms'] + 10000  # Add 10 seconds (10000 ms)
+    song_finished = progress_plus_10s >= state['duration_ms']
+    
+    # Priority 1: If we have a queued song and song finished, play it immediately
+    if song_finished and st.session_state.next_song_queued and st.session_state.queued_song_data:
+        queued_song = st.session_state.queued_song_data
+        # Play the queued song directly
+        success = st.session_state.dj.handler.play_specific_song(
+            queued_song['name'], 
+            queued_song['artist']
+        )
+        if success:
+            # Update current song data
+            st.session_state.dj.current_song_data = queued_song
+            st.toast(f"Playing queued song: {queued_song['name']}")
+        # Clear the queue
+        st.session_state.next_song_queued = False
+        st.session_state.queued_song_data = None
+        st.session_state.should_play_queued_song = False
+        # Wait and rerun
+        time.sleep(2.0)
+        st.rerun()
+    # Priority 2: If we have a pending mood change and song finished, use that
+    elif song_finished and st.session_state.pending_mood_change:
+        new_mood = st.session_state.pending_mood_change
+        st.session_state.pending_mood_change = None
+        song_name = st.session_state.dj.start_with_mood(new_mood)
+        st.toast(f"Loading song for {new_mood.upper()} mood")
+        st.session_state.next_song_queued = False
+        st.session_state.queued_song_data = None
+        st.session_state.should_play_queued_song = False
+        # Wait and rerun
+        time.sleep(2.0)
+        st.rerun()
+    # Priority 3: If song finished naturally (no queue, no mood change), play next song
+    elif song_finished:
+        song_name = st.session_state.dj.next_song()
+        st.session_state.queued_song_data = None
+        st.session_state.should_play_queued_song = False
+        st.toast("Loading next song")
+        # Wait and rerun
+        time.sleep(2.0)
         st.rerun()
 
 if state:
@@ -356,40 +528,12 @@ if state:
         st.markdown(f"### {state['artist']}")
         st.markdown(f"*{state['album']}*")
         
-        # Progress Bar
-        progress = state['progress_ms'] / state['duration_ms']
-        st.progress(progress)
-        
-        # Check if song finished - queue next song
-        time_remaining = (state['duration_ms'] - state['progress_ms']) / 1000.0
-        progress_ratio = state['progress_ms'] / state['duration_ms']
-        song_finished = time_remaining <= 1.0 or not state.get('is_playing', False) or progress_ratio >= 0.99
-        
-        # If we have a pending mood change, use that
-        if song_finished and st.session_state.pending_mood_change:
-            new_mood = st.session_state.pending_mood_change
-            st.session_state.pending_mood_change = None
-            st.session_state.dj.start_with_mood(new_mood)
-            st.toast(f"Loading song for {new_mood.upper()} mood")
-            st.session_state.next_song_queued = False
-            st.session_state.queued_song_data = None
-            time.sleep(2.0)
-            st.rerun()
-        # If song finished and next song is queued (from like), play it
-        elif song_finished and st.session_state.next_song_queued:
-            st.session_state.dj.next_song()
-            st.session_state.next_song_queued = False
-            st.session_state.queued_song_data = None
-            st.toast("Loading next song")
-            time.sleep(2.0)
-            st.rerun()
-        # If song finished naturally (no like, no mood change), queue next song
-        elif song_finished and not st.session_state.next_song_queued and not st.session_state.pending_mood_change:
-            st.session_state.dj.next_song()
-            st.session_state.queued_song_data = None
-            st.toast("Loading next song")
-            time.sleep(2.0)
-            st.rerun()
+        # Progress Bar (with safety check - updates automatically on rerun)
+        if state['duration_ms'] > 0:
+            progress = state['progress_ms'] / state['duration_ms']
+            st.progress(min(progress, 1.0))  # Updates automatically when value changes on rerun
+        else:
+            st.progress(0.0)
         
         # Time Display
         def fmt_time(ms):
@@ -457,3 +601,13 @@ if st.session_state.history:
         width='stretch', 
         hide_index=True
     )
+
+# Periodic rerun to ensure get_current_spotify_state() is called regularly
+# This allows progress bar updates AND auto-like checks to work
+# MUST happen at END after all UI is rendered
+# IMPORTANT: Script must keep itself alive - wait 10 seconds then rerun
+if st.session_state.session_started:
+    # Wait 10 seconds, then rerun to update progress bar and check auto-like
+    # This keeps the script alive and ensures continuous updates
+    time.sleep(10.0)
+    st.rerun()
