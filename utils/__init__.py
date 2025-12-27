@@ -8,9 +8,14 @@ from .bci_pipe import (
     extract_features
 )
 
+from .classifier import (
+    classify_mood
+)
+
 __all__ = [
     "generate_pink_noise",
     "add_wave",
     "bandpass_filter",
-    "extract_features"
+    "extract_features",
+    "classify_mood"
 ]

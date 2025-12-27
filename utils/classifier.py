@@ -6,7 +6,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import numpy as np #type: ignore
-from utils import extract_features
+from utils.bci_pipe import extract_features
 from data.brain import get_multichannel_eeg
 
 def classify_mood(features):
