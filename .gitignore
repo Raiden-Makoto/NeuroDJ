@@ -39,3 +39,6 @@ ENV/
 Thumbs.db
 .env
 .cache
+
+# Spotify token cache
+.spotify_token_cache
