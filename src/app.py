@@ -86,6 +86,12 @@ if 'dj' not in st.session_state:
 if 'history' not in st.session_state:
     st.session_state.history = []
 
+if 'mood_change_confirmed' not in st.session_state:
+    st.session_state.mood_change_confirmed = False  # Flag to indicate mood change was confirmed
+
+if 'confirmed_mood' not in st.session_state:
+    st.session_state.confirmed_mood = None  # Store the confirmed mood selection
+
 if 'last_track_id' not in st.session_state:
     st.session_state.last_track_id = None
 
@@ -144,11 +150,15 @@ if 'periodic_rerun_pending' not in st.session_state:
 if 'last_sim_mood_selection' not in st.session_state:
     st.session_state.last_sim_mood_selection = None  # Track last sidebar mood selection
 
+if 'starting_session' not in st.session_state:
+    st.session_state.starting_session = False  # Flag to show spinner when starting session
+
 # --- HELPER: SYNC WITH SPOTIFY ---
 def get_current_spotify_state():
     """
     Polls the real Spotify app to get accurate Album Art and Progress.
     Returns None if no playback or error occurs.
+    Handles token refresh and re-authentication if needed.
     """
     sp = st.session_state.dj.handler.sp
     try:
@@ -199,8 +209,54 @@ def get_current_spotify_state():
                 "track_id": track_id
             }
     except Exception as e:
-        # Log error but don't crash
-        print(f"Error fetching Spotify state: {e}")
+        error_msg = str(e)
+        # Handle 401 Unauthorized - token expired
+        if "401" in error_msg or "Unauthorized" in error_msg:
+            print("⚠️ Spotify token expired. Attempting to refresh...")
+            try:
+                # Try to refresh the token using get_cached_token (recommended method)
+                auth_manager = st.session_state.dj.handler.sp.auth_manager
+                if hasattr(auth_manager, 'get_cached_token'):
+                    # Get cached token (will refresh if needed)
+                    token_info = auth_manager.get_cached_token()
+                    if token_info:
+                        print("✅ Token refreshed successfully")
+                        # Retry the request
+                        current = sp.current_playback()
+                        if current and current.get('item'):
+                            # Continue with normal processing
+                            track = current['item']
+                            track_id = track.get('id')
+                            if not track_id:
+                                return None
+                            
+                            progress_ms = current.get('progress_ms', 0)
+                            artists = track.get('artists', [])
+                            artist_name = artists[0]['name'] if artists else 'Unknown Artist'
+                            album = track.get('album', {})
+                            album_name = album.get('name', 'Unknown Album')
+                            images = album.get('images', [])
+                            cover_url = images[0]['url'] if images else 'https://via.placeholder.com/300'
+                            
+                            return {
+                                "title": track.get('name', 'Unknown Track'),
+                                "artist": artist_name,
+                                "album": album_name,
+                                "cover": cover_url,
+                                "progress_ms": progress_ms,
+                                "duration_ms": track.get('duration_ms', 0),
+                                "is_playing": current.get('is_playing', False),
+                                "track_id": track_id
+                            }
+            except Exception as refresh_error:
+                print(f"❌ Token refresh failed: {refresh_error}")
+                print("💡 Please re-authenticate by restarting the app")
+                # Set a flag to show re-auth message
+                if 'auth_error' not in st.session_state:
+                    st.session_state.auth_error = True
+        else:
+            # Log other errors but don't crash
+            print(f"Error fetching Spotify state: {e}")
         return None
     
     # Fallback if nothing is playing
@@ -317,11 +373,54 @@ def handle_quit_session():
 # Add a Sidebar Debugger so you can control the simulation
 with st.sidebar:
     st.header("Hardware Simulator")
-    st.selectbox(
+    selected_mood = st.selectbox(
         "Force Brain State:", 
         ['sad', 'happy', 'anger', 'focus'], 
         key='sim_mood_selection'
     )
+    
+    # Confirm button to apply mood change
+    if st.button("Confirm Mood Change", key="confirm_mood_btn", use_container_width=True):
+        if st.session_state.session_started:
+            # Only allow mood change if session is started
+            st.session_state.mood_change_confirmed = True
+            st.session_state.confirmed_mood = selected_mood
+            st.rerun()
+        else:
+            st.warning("Please start a session first")
+    
+    st.divider()
+    
+    # Help content always visible in sidebar
+    st.markdown("### 🎵 How to Use NeuroDJ")
+    st.markdown("""
+    **Getting Started:**
+    1. Open Spotify on your computer
+    2. Start playing any song in Spotify
+    3. Select your mood above
+    4. Click "SCAN & START"
+    
+    **Controls:**
+    - **SKIP** - Skip song (negative feedback)
+    - **PAUSE/PLAY** - Toggle playback
+    - **NEXT IN QUEUE** - Play queued song
+    
+    **Auto-Like:** Songs liked after 30+ seconds
+    
+    **Queue:** Next song plays automatically
+    
+    **AI Features:**
+    - Valence: Positiveness (0-1)
+    - Energy: Energy level (0-1)
+    - Acousticness: Acoustic confidence (0-1)
+    """)
+
+# Check for authentication errors
+if st.session_state.get('auth_error', False):
+    st.error("⚠️ Spotify authentication expired. Please restart the app to re-authenticate.")
+    if st.button("Clear Error & Continue", key="clear_auth_error"):
+        st.session_state.auth_error = False
+        st.rerun()
 
 # 1. HEADER & BRAIN SENSOR
 c1, c2 = st.columns([3, 1])
@@ -337,25 +436,36 @@ with c2:
     else:
         # THE START BUTTON NOW READS THE BRAIN FIRST
         if st.button("SCAN & START"):
-            with st.spinner("Reading EEG Signals..."):
-                # 1. Hardware Simulation
-                # In a real app, this connects to the headset stream
-                # For now, we simulate a random state or let you pick in sidebar
-                sim_state = st.session_state.get('sim_mood_selection', 'focus')
-                raw_eeg, fs = get_multichannel_eeg(mood=sim_state)
-                
-                # 2. Signal Processing
-                features = extract_features(raw_eeg, fs)
-                detected_mood = classify_mood(features)
-                
-                st.toast(f"Detected Brain State: {detected_mood.upper()}")
-                time.sleep(1) # Dramatic pause
-                
-                # 3. The Cold Start
-                st.session_state.dj.start_with_mood(detected_mood)
-                st.session_state.session_started = True
-                st.session_state.current_brain_state = detected_mood
-                st.rerun()
+            # Set flag to show spinner on next rerun
+            st.session_state.starting_session = True
+            st.rerun()
+
+# Handle session start with spinner (after button click triggers rerun)
+if st.session_state.starting_session and not st.session_state.session_started:
+    with st.spinner("Reading EEG Signals..."):
+        # 1. Hardware Simulation
+        # In a real app, this connects to the headset stream
+        # For now, we simulate a random state or let you pick in sidebar
+        # Use last confirmed mood if available, otherwise use current selection
+        sim_state = st.session_state.get('last_sim_mood_selection') or st.session_state.get('sim_mood_selection', 'focus')
+        raw_eeg, fs = get_multichannel_eeg(mood=sim_state)
+        
+        # 2. Signal Processing
+        features = extract_features(raw_eeg, fs)
+        detected_mood = classify_mood(features)
+        
+        st.toast(f"Detected Brain State: {detected_mood.upper()}")
+        time.sleep(1) # Dramatic pause
+        
+        # 3. The Cold Start
+        st.session_state.dj.start_with_mood(detected_mood)
+        st.session_state.session_started = True
+        st.session_state.current_brain_state = detected_mood
+        # Set last confirmed mood to persist it
+        st.session_state.last_sim_mood_selection = sim_state
+        st.session_state.starting_session = False  # Clear the flag
+        st.rerun()
+
 
 st.divider()
 
@@ -394,7 +504,8 @@ if st.session_state.get('track_changed_pending_rerun', False):
     st.rerun()
 
 # Check if song was played and needs rerun (after delay)
-if st.session_state.get('song_played_pending_rerun', False):
+# Only check if session has started
+if st.session_state.session_started and st.session_state.get('song_played_pending_rerun', False):
     st.session_state.song_played_pending_rerun = False
     time.sleep(2.0)
     # Verify song is playing before rerun
@@ -403,37 +514,66 @@ if st.session_state.get('song_played_pending_rerun', False):
         st.rerun()
 
 # Monitor brain state changes if session is active
-# Only check if sidebar mood selection changed - don't rescan brain state on every rerun
+# Only check if mood change was confirmed - don't rescan brain state on every rerun
 if st.session_state.session_started:
-    sim_state = st.session_state.get('sim_mood_selection', 'focus')
-    
-    # Only scan and update brain state if sidebar selection changed
-    # This prevents constant rescanning and resetting
-    last_sim_state = st.session_state.get('last_sim_mood_selection', None)
-    
-    if sim_state != last_sim_state:
-        # Sidebar mood selection changed - scan brain state
-        st.session_state.last_sim_mood_selection = sim_state
-        raw_eeg, fs = get_multichannel_eeg(mood=sim_state, duration_sec=5)
-        features = extract_features(raw_eeg, fs)
-        detected_mood = classify_mood(features)
+    # Check if mood change was confirmed
+    if st.session_state.mood_change_confirmed and st.session_state.confirmed_mood:
+        confirmed_mood = st.session_state.confirmed_mood
+        # Reset the confirmation flag
+        st.session_state.mood_change_confirmed = False
         
-        # Only update if brain state actually changed (preserves state between reruns)
-        if st.session_state.current_brain_state != detected_mood:
-            if st.session_state.current_brain_state is not None:
-                # Brain state changed - queue it to load after current song finishes
-                st.session_state.pending_mood_change = detected_mood
-                st.toast(f"Brain State Changed: {detected_mood.upper()} (Will load after current song)")
-            # Update brain state only when it changes
-            st.session_state.current_brain_state = detected_mood
-    # If sidebar selection didn't change, brain state is preserved (not reset)
+        # Only process if the mood actually changed from the last confirmed mood
+        last_confirmed = st.session_state.get('last_sim_mood_selection', None)
+        if confirmed_mood != last_confirmed:
+            # Mood actually changed - scan brain state with the confirmed mood
+            raw_eeg, fs = get_multichannel_eeg(mood=confirmed_mood, duration_sec=5)
+            features = extract_features(raw_eeg, fs)
+            detected_mood = classify_mood(features)
+            
+            # Update last confirmed mood
+            st.session_state.last_sim_mood_selection = confirmed_mood
+            st.session_state.confirmed_mood = None  # Clear confirmed mood after processing
+            
+            # Only update if brain state actually changed (preserves state between reruns)
+            if st.session_state.current_brain_state != detected_mood:
+                if st.session_state.current_brain_state is not None:
+                    # Brain state changed - queue the next song for the new mood
+                    st.session_state.pending_mood_change = detected_mood
+                    
+                    # Queue the next song immediately so user can see it
+                    mood_map = {
+                        "sad":   {'valence': 0.2, 'energy': 0.2, 'acousticness': 0.9, 'liveness': 0.1, 'loudness': -12.0},
+                        "happy": {'valence': 0.9, 'energy': 0.8, 'acousticness': 0.1, 'liveness': 0.3, 'loudness': -6.0},
+                        "anger": {'valence': 0.1, 'energy': 0.9, 'acousticness': 0.05, 'liveness': 0.4, 'loudness': -4.0},
+                        "focus": {'valence': 0.5, 'energy': 0.3, 'acousticness': 0.5, 'liveness': 0.15, 'loudness': -10.0}
+                    }
+                    target_features = mood_map.get(detected_mood, mood_map['happy'])
+                    queued_song = st.session_state.dj.backend.get_next_song(target_features)
+                    st.session_state.queued_song_data = queued_song
+                    st.session_state.next_song_queued = True
+                    
+                    st.toast(f"Brain State Changed: {detected_mood.upper()} (Queued for after current song)")
+                # Update brain state only when it changes
+                st.session_state.current_brain_state = detected_mood
+            else:
+                # Brain state didn't change, just update the last confirmed mood
+                st.session_state.confirmed_mood = None
+        else:
+            # Same mood as before - no change needed, just clear the confirmed mood
+            st.session_state.confirmed_mood = None
+            st.toast("Mood unchanged - no action taken")
+    # If no mood change was confirmed, brain state is preserved (not reset)
 
-# Fetch real-time state from Spotify FIRST (before any rerun checks)
-state = get_current_spotify_state()
+# Only fetch Spotify state and do auto-refresh if session has started
+state = None
+if st.session_state.session_started:
+    # Fetch real-time state from Spotify FIRST (before any rerun checks)
+    state = get_current_spotify_state()
 
 # Auto-Like: Check if user has listened for 30+ seconds
 # Check directly using progress_ms
-if state and state.get('track_id'):
+# Only check if session has started
+if st.session_state.session_started and state and state.get('track_id'):
     track_id = state['track_id']
     progress_seconds = state['progress_ms'] / 1000.0
     
@@ -471,7 +611,8 @@ if state and state.get('track_id'):
 
 # Check song end BEFORE rendering UI - this ensures queued songs play immediately
 # If current progress + 10 seconds exceeds song duration, song is finished
-if state and state.get('duration_ms', 0) > 0:
+# Only check if session has started
+if st.session_state.session_started and state and state.get('duration_ms', 0) > 0:
     progress_plus_10s = state['progress_ms'] + 10000  # Add 10 seconds (10000 ms)
     song_finished = progress_plus_10s >= state['duration_ms']
     
@@ -593,15 +734,18 @@ else:
 # 5. HISTORY
 st.divider()
 st.subheader("Session History")
-if st.session_state.history:
-    # Remove track_id from display (it's just for deduplication)
-    display_history = [{k: v for k, v in item.items() if k != 'track_id'} for item in st.session_state.history]
-    st.dataframe(
-        pd.DataFrame(display_history), 
-        width='stretch', 
-        hide_index=True
-    )
-
+# Use container to prevent duplicate rendering
+with st.container():
+    if st.session_state.history:
+        # Remove track_id from display (it's just for deduplication)
+        display_history = [{k: v for k, v in item.items() if k != 'track_id'} for item in st.session_state.history]
+        st.dataframe(
+            pd.DataFrame(display_history), 
+            width='stretch', 
+            hide_index=True,
+            key="session_history_df"  # Add key to prevent duplicate rendering
+        )
+    
 # Periodic rerun to ensure get_current_spotify_state() is called regularly
 # This allows progress bar updates AND auto-like checks to work
 # MUST happen at END after all UI is rendered

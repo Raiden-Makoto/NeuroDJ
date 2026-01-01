@@ -36,12 +36,17 @@ class SpotifyHandler:
         
         # We need 'user-modify-playback-state' to control the player
         try:
-            self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+            # Create auth manager with cache file for token persistence
+            cache_path = ".spotify_token_cache"
+            self.auth_manager = SpotifyOAuth(
                 client_id=client_id,
                 client_secret=client_secret,
                 redirect_uri="http://127.0.0.1:6767",
-                scope="user-modify-playback-state user-read-playback-state"
-            ))
+                scope="user-modify-playback-state user-read-playback-state",
+                cache_path=cache_path,
+                show_dialog=False  # Don't show browser dialog on every request
+            )
+            self.sp = spotipy.Spotify(auth_manager=self.auth_manager)
         except Exception as e:
             raise ValueError(f"Failed to initialize Spotify authentication: {e}. Check your client_id and client_secret.")
 

@@ -25,7 +25,7 @@ Before you begin, ensure you have:
 
 ---
 
-## Installation
+## TO RUN NEURODJ ON YOUR DEVICE
 
 ### 1. Clone or Download the Repository
 
