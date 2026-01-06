@@ -16,7 +16,7 @@ class SongFinder:
         
         Args:
             target_features: Dictionary of feature names to target values
-                e.g., {'valence': 0.5, 'energy': 0.8, 'acousticness': 0.3}
+                e.g., {'valence': 0.5, 'energy': 0.8}
         
         Returns:
             Dictionary with song information:
@@ -26,10 +26,7 @@ class SongFinder:
                 'album': str,
                 'features': {
                     'valence': float,
-                    'energy': float,
-                    'acousticness': float,
-                    'liveness': float,
-                    'loudness': float
+                    'energy': float
                 }
             }
         """
@@ -63,10 +60,7 @@ class SongFinder:
                 "album": str(best_row.get('album_name', 'Unknown Album')),
                 "features": {
                     "valence": float(best_row.get('valence', 0.5)),
-                    "energy": float(best_row.get('energy', 0.5)),
-                    "acousticness": float(best_row.get('acousticness', 0.5)),
-                    "liveness": float(best_row.get('liveness', 0.1)),
-                    "loudness": float(best_row.get('loudness', -10.0))
+                    "energy": float(best_row.get('energy', 0.5))
                 }
             }
         except (ValueError, KeyError) as e:
@@ -78,9 +72,6 @@ class SongFinder:
                 "album": "Unknown Album",
                 "features": {
                     "valence": 0.5,
-                    "energy": 0.5,
-                    "acousticness": 0.5,
-                    "liveness": 0.1,
-                    "loudness": -10.0
+                    "energy": 0.5
                 }
             }

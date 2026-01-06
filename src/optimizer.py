@@ -19,16 +19,13 @@ class NeuroManager:
         self.backend = SongFinder(csv_path)
         self.handler = SpotifyHandler(spotify_id, spotify_secret)
         
-        # Initialize the Brain (Optimizer) with all 5 features
+        # Initialize the Brain (Optimizer) with valence and energy only
         acquisition = UpperConfidenceBound(kappa=2.5)
         self.bo = BayesianOptimization(
             f=None,
             pbounds={
                 'valence': (0, 1), 
-                'energy': (0, 1), 
-                'acousticness': (0, 1),
-                'liveness': (0, 1),
-                'loudness': (-20, 0)  # Loudness in dB: dataset range is -15.91 to -2.10, using -20 to 0 for safety
+                'energy': (0, 1)
             },
             acquisition_function=acquisition,
             verbose=0,
@@ -48,10 +45,10 @@ class NeuroManager:
         # Hardcoded 'Centroids' for each mood
         # This gives the AI a good starting place
         mood_map = {
-            "sad":   {'valence': 0.2, 'energy': 0.2, 'acousticness': 0.9, 'liveness': 0.1, 'loudness': -12.0},
-            "happy": {'valence': 0.9, 'energy': 0.8, 'acousticness': 0.1, 'liveness': 0.3, 'loudness': -6.0},
-            "anger": {'valence': 0.1, 'energy': 0.9, 'acousticness': 0.05, 'liveness': 0.4, 'loudness': -4.0},
-            "focus": {'valence': 0.5, 'energy': 0.3, 'acousticness': 0.5, 'liveness': 0.15, 'loudness': -10.0}
+            "sad":   {'valence': 0.2, 'energy': 0.2},
+            "happy": {'valence': 0.9, 'energy': 0.8},
+            "anger": {'valence': 0.1, 'energy': 0.9},
+            "focus": {'valence': 0.5, 'energy': 0.3}
         }
         
         # Default to 'focus' if mood is unknown
@@ -111,14 +108,11 @@ class NeuroManager:
         """
         if self.current_song_data:
             # Teach the AI the REAL features of the song we just heard
-            # Use all 5 features from the backend
+            # Use only valence and energy from the backend
             all_features = self.current_song_data['features']
             params = {
                 'valence': all_features.get('valence', 0.5),
-                'energy': all_features.get('energy', 0.5),
-                'acousticness': all_features.get('acousticness', 0.5),
-                'liveness': all_features.get('liveness', 0.1),
-                'loudness': all_features.get('loudness', -10.0)
+                'energy': all_features.get('energy', 0.5)
             }
             
             try:

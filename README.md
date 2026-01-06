@@ -91,7 +91,7 @@ SPOTIFY_CLIENT_SECRET=your_client_secret_here
 
 ## Download Music Dataset
 
-**⚠️ IMPORTANT**: Spotify removed audio features (valence, energy, acousticness, etc.) from their public API. You must download a dataset manually.
+**⚠️ IMPORTANT**: Spotify removed audio features (valence, energy, etc.) from their public API. You must download a dataset manually.
 
 ### Option 1: Use Provided Dataset
 
@@ -105,9 +105,6 @@ You need a CSV file with the following columns:
 - `artist` - Artist name
 - `valence` - Musical positiveness (0.0 to 1.0)
 - `energy` - Perceived energy (0.0 to 1.0)
-- `acousticness` - Acousticness confidence (0.0 to 1.0)
-- `liveness` - Liveness detection (0.0 to 1.0)
-- `loudness` - Overall loudness in dB (typically -20 to 0)
 
 **Where to get datasets:**
 - [Spotify Million Playlist Dataset](https://www.aicrowd.com/challenges/spotify-million-playlist-dataset-challenge)
@@ -120,8 +117,8 @@ You need a CSV file with the following columns:
 
 **Example CSV format:**
 ```csv
-album_name,track_name,artist,valence,energy,acousticness,liveness,loudness
-Album Name,Song Title,Artist Name,0.5,0.7,0.3,0.1,-5.0
+album_name,track_name,artist,valence,energy
+Album Name,Song Title,Artist Name,0.5,0.7
 ```
 
 ---

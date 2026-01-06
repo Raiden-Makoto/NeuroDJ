@@ -412,7 +412,6 @@ with st.sidebar:
     **AI Features:**
     - Valence: Positiveness (0-1)
     - Energy: Energy level (0-1)
-    - Acousticness: Acoustic confidence (0-1)
     """)
 
 # Check for authentication errors
@@ -542,10 +541,10 @@ if st.session_state.session_started:
                     
                     # Queue the next song immediately so user can see it
                     mood_map = {
-                        "sad":   {'valence': 0.2, 'energy': 0.2, 'acousticness': 0.9, 'liveness': 0.1, 'loudness': -12.0},
-                        "happy": {'valence': 0.9, 'energy': 0.8, 'acousticness': 0.1, 'liveness': 0.3, 'loudness': -6.0},
-                        "anger": {'valence': 0.1, 'energy': 0.9, 'acousticness': 0.05, 'liveness': 0.4, 'loudness': -4.0},
-                        "focus": {'valence': 0.5, 'energy': 0.3, 'acousticness': 0.5, 'liveness': 0.15, 'loudness': -10.0}
+                        "sad":   {'valence': 0.2, 'energy': 0.2},
+                        "happy": {'valence': 0.9, 'energy': 0.8},
+                        "anger": {'valence': 0.1, 'energy': 0.9},
+                        "focus": {'valence': 0.5, 'energy': 0.3}
                     }
                     target_features = mood_map.get(detected_mood, mood_map['happy'])
                     queued_song = st.session_state.dj.backend.get_next_song(target_features)
@@ -689,10 +688,9 @@ if state:
             # Show what the AI *thought* it was playing vs reality
             if st.session_state.dj.current_song_data:
                 feats = st.session_state.dj.current_song_data['features']
-                c1, c2, c3 = st.columns(3)
+                c1, c2 = st.columns(2)
                 c1.metric("Valence", f"{feats['valence']:.2f}")
                 c2.metric("Energy", f"{feats['energy']:.2f}")
-                c3.metric("Acoustic", f"{feats['acousticness']:.2f}")
 
     # 3. CONTROLS
     st.write("")
@@ -721,10 +719,9 @@ if state:
             st.caption(f"by {queue_data['artist']}")
         with col2:
             queue_feats = queue_data['features']
-            q1, q2, q3 = st.columns(3)
+            q1, q2 = st.columns(2)
             q1.metric("Valence", f"{queue_feats['valence']:.2f}")
             q2.metric("Energy", f"{queue_feats['energy']:.2f}")
-            q3.metric("Acoustic", f"{queue_feats['acousticness']:.2f}")
 
 else:
     # Empty State
