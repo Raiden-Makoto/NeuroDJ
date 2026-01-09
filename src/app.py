@@ -275,10 +275,12 @@ def handle_skip():
             # Only submit feedback if NOT a duplicate
             if not is_duplicate:
                 # 0.0 Reward = Skip
-                new_song = st.session_state.dj.register_feedback(0.0)
+                current_mood = st.session_state.get('current_brain_state')
+                new_song = st.session_state.dj.register_feedback(0.0, current_mood=current_mood)
             else:
                 # Duplicate song - just skip without feedback
-                new_song = st.session_state.dj.next_song()
+                current_mood = st.session_state.get('current_brain_state')
+                new_song = st.session_state.dj.next_song(mood=current_mood)
             
             # Log to history (prevent duplicates)
             if not is_duplicate:
@@ -547,7 +549,8 @@ if st.session_state.session_started:
                         "focus": {'valence': 0.5, 'energy': 0.3}
                     }
                     target_features = mood_map.get(detected_mood, mood_map['happy'])
-                    queued_song = st.session_state.dj.backend.get_next_song(target_features)
+                    filters = st.session_state.dj._get_mood_filters(detected_mood) if detected_mood else None
+                    queued_song = st.session_state.dj.backend.get_next_song(target_features, filters=filters)
                     st.session_state.queued_song_data = queued_song
                     st.session_state.next_song_queued = True
                     
@@ -586,7 +589,8 @@ if st.session_state.session_started and state and state.get('track_id'):
         
         # Register feedback with the optimizer
         if st.session_state.dj.current_song_data:
-            st.session_state.dj.register_feedback(1.0)
+            current_mood = st.session_state.get('current_brain_state')
+            st.session_state.dj.register_feedback(1.0, current_mood=current_mood)
         
         # Add to history (prevent duplicates)
         track_ids_in_history = [h.get('track_id') for h in st.session_state.history if 'track_id' in h]
@@ -601,8 +605,10 @@ if st.session_state.session_started and state and state.get('track_id'):
         st.toast("Auto-liked! (Listened 30+ seconds)")
         
         # Queue next song immediately after auto-like - preview it
+        current_mood = st.session_state.get('current_brain_state')
         target = st.session_state.dj.bo.suggest()
-        queued_song = st.session_state.dj.backend.get_next_song(target)
+        filters = st.session_state.dj._get_mood_filters(current_mood) if current_mood else None
+        queued_song = st.session_state.dj.backend.get_next_song(target, filters=filters)
         st.session_state.queued_song_data = queued_song
         st.session_state.next_song_queued = True
         # Set flag to trigger rerun after delay
@@ -648,7 +654,8 @@ if st.session_state.session_started and state and state.get('duration_ms', 0) > 
         st.rerun()
     # Priority 3: If song finished naturally (no queue, no mood change), play next song
     elif song_finished:
-        song_name = st.session_state.dj.next_song()
+        current_mood = st.session_state.get('current_brain_state')
+        song_name = st.session_state.dj.next_song(mood=current_mood)
         st.session_state.queued_song_data = None
         st.session_state.should_play_queued_song = False
         st.toast("Loading next song")
