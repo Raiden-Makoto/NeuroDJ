@@ -4,7 +4,7 @@ import numpy as np #type: ignore
 from typing import Dict, Any
 
 class SongFinder:
-    def __init__(self, csv_path="data/taylor_swift.csv"):
+    def __init__(self, csv_path="data/neurodj_data.csv"):
         self.df = pd.read_csv(csv_path)
         # Normalize columns
         self.df.columns = [c.lower() for c in self.df.columns]

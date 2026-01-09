@@ -95,7 +95,7 @@ SPOTIFY_CLIENT_SECRET=your_client_secret_here
 
 ### Option 1: Use Provided Dataset
 
-The project includes a sample dataset (`data/taylor_swift.csv`) that you can use to test the application.
+The project includes a merged dataset (`data/neurodj_data.csv`) that combines audio features and lyrical analysis. You can use this to test the application.
 
 ### Option 2: Download Your Own Dataset
 
@@ -113,7 +113,7 @@ You need a CSV file with the following columns:
 
 **Place your dataset:**
 1. Save your CSV file in the `data/` directory
-2. Name it `taylor_swift.csv` (or update the path in `src/backend.py` and `src/optimizer.py`)
+2. Name it `neurodj_data.csv` (or update the path in `src/backend.py` and `src/optimizer.py`)
 
 **Example CSV format:**
 ```csv

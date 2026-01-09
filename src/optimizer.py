@@ -6,7 +6,7 @@ from .backend import SongFinder
 from .spotify import SpotifyHandler
 
 class NeuroManager:
-    def __init__(self, spotify_id: str = None, spotify_secret: str = None, csv_path: str = "data/taylor_swift.csv"):
+    def __init__(self, spotify_id: str = None, spotify_secret: str = None, csv_path: str = "data/neurodj_data.csv"):
         """
         Initialize the Neuro-DJ manager.
         
